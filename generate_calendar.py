@@ -93,24 +93,35 @@ def get_events_for_date(date):
                     
                 event_name = event_element.text.strip()
                 
-                # Skip holidays and bank holidays
-                if any(holiday_term in event_name.lower() for holiday_term in ["holiday", "day", "bank holiday"]):
+                # Skip only national/bank holidays but keep economic events
+                holiday_keywords = ["bank holiday", "market holiday"]
+                if any(keyword in event_name.lower() for keyword in holiday_keywords):
                     print(f"Skipping holiday: {event_name}")
                     continue
                 
-                # Create unique identifier to prevent duplicates
-                event_id = f"{date.strftime('%Y-%m-%d')}-{event_time}-{country_code}-{event_name}"
-                
-                # Store the event
-                events.append({
-                    "id": event_id,
-                    "date": date.strftime("%a %b %d"),
-                    "time": event_time,
-                    "country": country_code.title(),
-                    "event": event_name
-                })
-                
-                print(f"Found event: {date.strftime('%Y-%m-%d')} - {event_time} - {country_code} - {event_name}")
+                # These are specific economic indicators we want to keep
+                economic_keywords = ["pmi", "gdp", "cpi", "unemployment", "inflation", 
+                                    "interest rate", "nonfarm", "retail sales", "trade balance",
+                                    "consumer", "manufacturing", "services", "index", "sentiment",
+                                    "confidence", "data", "report", "auction", "rate"]
+                    
+                # Keep the event if it's a specific economic indicator or doesn't contain "day" (likely not a holiday)
+                if any(keyword in event_name.lower() for keyword in economic_keywords) or "day" not in event_name.lower():
+                    # Create unique identifier to prevent duplicates
+                    event_id = f"{date.strftime('%Y-%m-%d')}-{event_time}-{country_code}-{event_name}"
+                    
+                    # Store the event
+                    events.append({
+                        "id": event_id,
+                        "date": date.strftime("%a %b %d"),
+                        "time": event_time,
+                        "country": country_code.title(),
+                        "event": event_name
+                    })
+                    
+                    print(f"Found event: {date.strftime('%Y-%m-%d')} - {event_time} - {country_code} - {event_name}")
+                else:
+                    print(f"Skipping non-economic event: {event_name}")
                 
             except Exception as e:
                 print(f"Error parsing event: {e}")
