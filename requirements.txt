@@ -1,0 +1,3 @@
+git+https://github.com/alvarobartt/investpy.git@master
+pandas
+# Add other dependencies your script uses

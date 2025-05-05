@@ -20,7 +20,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install requirements
-        run: pip install requests investpy
+        run: pip install requests git+https://github.com/alvarobartt/investpy.git@master
         
       - name: Run update script
         run: python generate_calendar.py
@@ -30,5 +30,4 @@ jobs:
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add index.html
-          git commit -m "Auto-update calendar"
-          git push
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update calendar" && git push)
