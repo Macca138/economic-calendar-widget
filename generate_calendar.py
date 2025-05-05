@@ -1,9 +1,8 @@
 import requests
-from bs4 import BeautifulSoup
-import pandas as pd
+import json
 from datetime import datetime, timedelta
 import html
-import random
+import re
 import sys
 
 # --- Configuration ---
@@ -11,139 +10,94 @@ TODAY = datetime.today().date()
 TOMORROW = TODAY + timedelta(days=1)
 
 MAJOR_COUNTRIES = [
-    "united states", "euro zone", "united kingdom", "japan",
+    "united states", "eurozone", "united kingdom", "japan",
     "australia", "new zealand", "canada", "switzerland"
 ]
+
+# Convert to a list of country codes for the API
+COUNTRY_CODES = {
+    "united states": "US",
+    "eurozone": "EU", 
+    "united kingdom": "GB",
+    "japan": "JP",
+    "australia": "AU",
+    "new zealand": "NZ",
+    "canada": "CA",
+    "switzerland": "CH"
+}
 
 print(f"Looking for events from {TODAY} to {TOMORROW}")
 print(f"Countries: {MAJOR_COUNTRIES}")
 
-# User agent to avoid blocking
-user_agents = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15'
-]
-
-headers = {
-    "User-Agent": random.choice(user_agents),
-    "Accept-Language": "en-US,en;q=0.9",
-}
-
-# --- Function to get events for a specific date ---
-def get_events_for_date(date):
-    formatted_date = date.strftime("%Y-%m-%d")
-    url = f"https://www.investing.com/economic-calendar/Service/getCalendarFilteredData"
+# Use FXStreet's data feed, which is publicly accessible
+def get_events(start_date, end_date):
+    # Format dates for the API
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
     
-    payload = {
-        'country[]': '5,4,10,14,35,36,26,12,72',  # IDs for major countries
-        'importance[]': '3',  # High importance only
-        'timeZone': '8',  # GMT timezone
-        'timeFilter': 'timeOnly',
-        'dateFrom': formatted_date,
-        'dateTo': formatted_date,
-        'currentTab': 'custom',
-        'limit_from': 0
-    }
+    # Base URL for the FXStreet economic calendar API
+    url = f"https://calendar-api.fxstreet.com/en/api/v1/eventDates?culture=en-US&dateFrom={start_str}&dateTo={end_str}&famousEntitiesOnly=false&excludeCategories=Holiday"
     
-    headers_post = {
-        "User-Agent": random.choice(user_agents),
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer": "https://www.investing.com/economic-calendar/"
+    # Add user agent to mimic a browser
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "application/json"
     }
     
     try:
-        response = requests.post(url, headers=headers_post, data=payload)
+        # Get dates first
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
+        dates_data = response.json()
         
-        # The response is HTML content within JSON
-        html_content = response.text
-        soup = BeautifulSoup(html_content, 'html.parser')
+        all_events = []
         
-        events = []
-        rows = soup.select('tr.js-event-item')
-        
-        for row in rows:
-            try:
-                # Get country
-                country_element = row.select_one('td.flagCur span.ceFlags')
-                if not country_element:
+        # For each date returned, get the events
+        for date_info in dates_data:
+            date_str = date_info.get("date")
+            
+            events_url = f"https://calendar-api.fxstreet.com/en/api/v1/eventsByDate?culture=en-US&date={date_str}&famousEntitiesOnly=false&holidaysExcluded=true&view=normallist&volatilities=High"
+            
+            events_response = requests.get(events_url, headers=headers)
+            events_response.raise_for_status()
+            events_data = events_response.json()
+            
+            for event in events_data:
+                # Check if event is from one of our major countries
+                country = event.get("countryName", "").lower()
+                if not any(major in country for major in MAJOR_COUNTRIES):
                     continue
-                    
-                country_code = country_element.get('title', '').lower()
                 
-                # Check if country is in major countries
-                if not any(major_country in country_code.lower() for major_country in MAJOR_COUNTRIES):
-                    continue
+                country_code = next((COUNTRY_CODES[major] for major in MAJOR_COUNTRIES if major in country), "")
                 
-                # Get time
-                time_element = row.select_one('td.time')
-                if not time_element:
-                    continue
-                    
-                event_time = time_element.text.strip()
+                # Format the event datetime
+                event_date = datetime.strptime(event.get("date", ""), "%Y-%m-%dT%H:%M:%SZ")
                 
-                # Get event name
-                event_element = row.select_one('td.event a')
-                if not event_element:
-                    continue
-                    
-                event_name = event_element.text.strip()
-                
-                # Skip only national/bank holidays but keep economic events
-                holiday_keywords = ["bank holiday", "market holiday"]
-                if any(keyword in event_name.lower() for keyword in holiday_keywords):
+                # Skip holidays even if they somehow made it through
+                event_name = event.get("name", "")
+                if any(holiday in event_name.lower() for holiday in ["holiday", "bank holiday"]):
                     print(f"Skipping holiday: {event_name}")
                     continue
                 
-                # These are specific economic indicators we want to keep
-                economic_keywords = ["pmi", "gdp", "cpi", "unemployment", "inflation", 
-                                    "interest rate", "nonfarm", "retail sales", "trade balance",
-                                    "consumer", "manufacturing", "services", "index", "sentiment",
-                                    "confidence", "data", "report", "auction", "rate"]
-                    
-                # Keep the event if it's a specific economic indicator or doesn't contain "day" (likely not a holiday)
-                if any(keyword in event_name.lower() for keyword in economic_keywords) or "day" not in event_name.lower():
-                    # Create unique identifier to prevent duplicates
-                    event_id = f"{date.strftime('%Y-%m-%d')}-{event_time}-{country_code}-{event_name}"
-                    
-                    # Store the event
-                    events.append({
-                        "id": event_id,
-                        "date": date.strftime("%a %b %d"),
-                        "time": event_time,
-                        "country": country_code.title(),
-                        "event": event_name
-                    })
-                    
-                    print(f"Found event: {date.strftime('%Y-%m-%d')} - {event_time} - {country_code} - {event_name}")
-                else:
-                    print(f"Skipping non-economic event: {event_name}")
-                
-            except Exception as e:
-                print(f"Error parsing event: {e}")
-                continue
-                
-        return events
+                all_events.append({
+                    "id": event.get("id", ""),
+                    "date": event_date.strftime("%a %b %d"),
+                    "time": event_date.strftime("%H:%M"),
+                    "country": country_code or country.title(),
+                    "event": event_name
+                })
+                print(f"Found event: {event_date.strftime('%Y-%m-%d')} - {event_date.strftime('%H:%M')} - {country} - {event_name}")
+        
+        return all_events
         
     except Exception as e:
-        print(f"Error fetching data for {formatted_date}: {e}")
+        print(f"Error retrieving events: {e}")
         return []
 
 # --- Get events for today and tomorrow ---
-all_events = []
-
 try:
-    today_events = get_events_for_date(TODAY)
-    all_events.extend(today_events)
-    print(f"Found {len(today_events)} events for today")
-    
-    tomorrow_events = get_events_for_date(TOMORROW)
-    all_events.extend(tomorrow_events)
-    print(f"Found {len(tomorrow_events)} events for tomorrow")
+    all_events = get_events(TODAY, TOMORROW)
+    print(f"Found {len(all_events)} events from {TODAY} to {TOMORROW}")
     
     # Remove duplicates by using a dictionary with event IDs as keys
     unique_events = {}
