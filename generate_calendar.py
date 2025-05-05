@@ -93,8 +93,17 @@ def get_events_for_date(date):
                     
                 event_name = event_element.text.strip()
                 
+                # Skip holidays and bank holidays
+                if any(holiday_term in event_name.lower() for holiday_term in ["holiday", "day", "bank holiday"]):
+                    print(f"Skipping holiday: {event_name}")
+                    continue
+                
+                # Create unique identifier to prevent duplicates
+                event_id = f"{date.strftime('%Y-%m-%d')}-{event_time}-{country_code}-{event_name}"
+                
                 # Store the event
                 events.append({
+                    "id": event_id,
                     "date": date.strftime("%a %b %d"),
                     "time": event_time,
                     "country": country_code.title(),
@@ -124,6 +133,14 @@ try:
     tomorrow_events = get_events_for_date(TOMORROW)
     all_events.extend(tomorrow_events)
     print(f"Found {len(tomorrow_events)} events for tomorrow")
+    
+    # Remove duplicates by using a dictionary with event IDs as keys
+    unique_events = {}
+    for event in all_events:
+        unique_events[event['id']] = event
+    
+    all_events = list(unique_events.values())
+    print(f"After removing duplicates: {len(all_events)} events")
     
 except Exception as e:
     print(f"Error retrieving events: {e}")
