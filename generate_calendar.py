@@ -1,38 +1,36 @@
-import requests
+import investpy
 from datetime import datetime, timedelta
 import html
 
-# Configuration
-MAJOR_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"}
-TODAY = datetime.utcnow().date()
+# --- Configuration ---
+TODAY = datetime.today().date()
 TOMORROW = TODAY + timedelta(days=1)
-URL = "https://cdn-nfs.faireconomy.media/ff_calendar_thisweek.json"
+MAJOR_COUNTRIES = [
+    "united states", "euro zone", "united kingdom", "japan",
+    "australia", "new zealand", "canada", "switzerland"
+]
 
-# Fetch and parse JSON
-response = requests.get(URL)
-response.raise_for_status()
-data = response.json()
+# --- Fetch Economic Events ---
+events = investpy.economic_calendar(time_zone='GMT', countries=MAJOR_COUNTRIES)
 
-# Filter events
-events = []
-for item in data:
-    event_date = datetime.strptime(item['date'], '%Y-%m-%d').date()
+# --- Filter Events ---
+filtered_events = []
+for _, event in events.iterrows():
+    event_date = datetime.strptime(event['date'], "%d/%m/%Y").date()
     if event_date not in [TODAY, TOMORROW]:
         continue
-    if item['impact'] != 'High':
+    if event['importance'] != 'High':
         continue
-    if item['currency'] not in MAJOR_CURRENCIES:
-        continue
-
-    events.append({
+    filtered_events.append({
         "date": event_date.strftime("%a %b %d"),
-        "time": item['time'] + " UTC",
-        "currency": item['currency'],
-        "event": item['title'],
+        "time": event['time'],
+        "country": event['country'].title(),
+        "event": event['event']
     })
 
-# Generate HTML
-html_output = """
+# --- Generate HTML ---
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write("""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -50,22 +48,16 @@ html_output = """
 </head>
 <body>
   <h3>High-Impact Economic Events</h3>
-"""
-
-if not events:
-    html_output += "<p>No high-impact events for today or tomorrow.</p>"
-else:
-    for e in events:
-        html_output += f"""
+""")
+    if not filtered_events:
+        f.write("<p>No high-impact events for today or tomorrow.</p>")
+    else:
+        for e in filtered_events:
+            f.write(f"""
   <div class="event">
-    <div class="time">{html.escape(e['date'])} — {html.escape(e['time'])}</div>
-    <div class="title">{html.escape(e['currency'])}: {html.escape(e['event'])}</div>
+    <div class="time">{html.escape(e['date'])} — {html.escape(e['time'])} GMT</div>
+    <div class="title">{html.escape(e['country'])}: {html.escape(e['event'])}</div>
     <div class="impact">Impact: High</div>
   </div>
-"""
-
-html_output += "</body></html>"
-
-# Write to index.html
-with open("index.html", "w", encoding="utf-8") as f:
-    f.write(html_output)
+""")
+    f.write("</body></html>")
