@@ -20,7 +20,8 @@ jobs:
           python-version: '3.x'
 
       - name: Install requirements
-        run: pip install requests
+        run: pip install requests beautifulsoup4
+        
 
       - name: Run update script
         run: python generate_calendar.py
