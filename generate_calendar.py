@@ -11,7 +11,11 @@ MAJOR_COUNTRIES = [
 ]
 
 # --- Fetch Economic Events ---
-events = investpy.economic_calendar(time_zone='GMT', countries=MAJOR_COUNTRIES)
+events = investpy.economic_calendar(
+    time_zone='GMT', 
+    countries=MAJOR_COUNTRIES,
+    importances=['high']  # This filters for high importance events directly
+)
 
 # --- Filter Events ---
 filtered_events = []
