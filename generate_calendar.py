@@ -1,6 +1,7 @@
 import investpy
 from datetime import datetime, timedelta
 import html
+import sys
 
 # --- Configuration ---
 TODAY = datetime.today().date()
@@ -10,27 +11,49 @@ MAJOR_COUNTRIES = [
     "australia", "new zealand", "canada", "switzerland"
 ]
 
+# --- Debug Information ---
+print(f"Looking for events from {TODAY} to {TOMORROW}")
+print(f"Countries: {MAJOR_COUNTRIES}")
+
 # --- Fetch Economic Events ---
-events = investpy.economic_calendar(
-    time_zone='GMT', 
-    countries=MAJOR_COUNTRIES,
-    importances=['high']  # This filters for high importance events directly
-)
+try:
+    # Important: 'high' should be lowercase for investpy
+    events = investpy.economic_calendar(
+        time_zone='GMT', 
+        countries=MAJOR_COUNTRIES,
+        importances=['high'],  # This ensures proper filtering
+        from_date=TODAY.strftime("%d/%m/%Y"),  # Explicitly set dates
+        to_date=TOMORROW.strftime("%d/%m/%Y")
+    )
+    print(f"Retrieved {len(events)} total events")
+    
+    # Print first few events for debugging
+    if len(events) > 0:
+        print("Sample events:")
+        print(events.head())
+    else:
+        print("No events were retrieved!")
+except Exception as e:
+    print(f"Error retrieving events: {e}")
+    sys.exit(1)  # Exit with error code
 
 # --- Filter Events ---
 filtered_events = []
 for _, event in events.iterrows():
     event_date = datetime.strptime(event['date'], "%d/%m/%Y").date()
-    if event_date not in [TODAY, TOMORROW]:
-        continue
-    if event['importance'] != 'High':
-        continue
+    
+    # Log what we're processing
+    print(f"Processing event: {event['date']} - {event['event']} - Importance: {event['importance']}")
+    
+    # No need to filter by importance as we already did that in the API call
     filtered_events.append({
         "date": event_date.strftime("%a %b %d"),
         "time": event['time'],
         "country": event['country'].title(),
         "event": event['event']
     })
+
+print(f"Filtered to {len(filtered_events)} events")
 
 # --- Generate HTML ---
 with open("index.html", "w", encoding="utf-8") as f:
@@ -55,6 +78,7 @@ with open("index.html", "w", encoding="utf-8") as f:
 """)
     if not filtered_events:
         f.write("<p>No high-impact events for today or tomorrow.</p>")
+        print("No events to display")
     else:
         for e in filtered_events:
             f.write(f"""
@@ -64,4 +88,7 @@ with open("index.html", "w", encoding="utf-8") as f:
     <div class="impact">Impact: High</div>
   </div>
 """)
+        print(f"Generated HTML with {len(filtered_events)} events")
     f.write("</body></html>")
+
+print("Script completed successfully")
