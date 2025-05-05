@@ -31,6 +31,8 @@ try:
     if len(events) > 0:
         print("Sample events:")
         print(events.head())
+        # Print column names to debug the structure
+        print("Available columns:", events.columns.tolist())
     else:
         print("No events were retrieved!")
 except Exception as e:
@@ -43,13 +45,16 @@ for _, event in events.iterrows():
     event_date = datetime.strptime(event['date'], "%d/%m/%Y").date()
     
     # Log what we're processing
-    print(f"Processing event: {event['date']} - {event['event']} - Importance: {event['importance']}")
+    print(f"Processing event: {event['date']} - {event['event']}")
+    
+    # Get the country from the 'zone' column instead of 'country'
+    country = event['zone'].title() if 'zone' in event else "Unknown"
     
     # No need to filter by importance as we already did that in the API call
     filtered_events.append({
         "date": event_date.strftime("%a %b %d"),
         "time": event['time'],
-        "country": event['country'].title(),
+        "country": country,
         "event": event['event']
     })
 
