@@ -20,7 +20,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install requirements
-        run: pip install requests git+https://github.com/alvarobartt/investpy.git@master
+        run: pip install requests beautifulsoup4 pandas
         
       - name: Run update script
         run: python generate_calendar.py
