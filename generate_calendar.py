@@ -1,60 +1,48 @@
 import requests
-from bs4 import BeautifulSoup
+from ics import Calendar
 from datetime import datetime, timedelta
 import html
 
+# --- CONFIGURATION ---
+FEED_URL = "https://www.fxblue.com/Calendar/FxBlueCal.ics"
+MAJOR_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"}
 TODAY = datetime.utcnow().date()
 TOMORROW = TODAY + timedelta(days=1)
-MAJOR_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"}
 
-url = "https://www.forexfactory.com/calendar"
-headers = {"User-Agent": "Mozilla/5.0"}
+# --- FETCH AND PARSE ICS FEED ---
+response = requests.get(FEED_URL)
+response.raise_for_status()
+calendar = Calendar(response.text)
 
-response = requests.get(url, headers=headers)
-soup = BeautifulSoup(response.content, "html.parser")
-rows = soup.select("tr.calendar__row")
 events = []
-
-for row in rows:
-    try:
-        time_elem = row.select_one(".calendar__time")
-        currency_elem = row.select_one(".calendar__currency")
-        impact_elem = row.select_one(".impact--high")
-        event_elem = row.select_one(".calendar__event-title")
-        date_elem = row.find_previous("tr", class_="calendar__row--date")
-
-        if not impact_elem:
-            continue
-
-        currency = currency_elem.text.strip() if currency_elem else ""
-        if currency not in MAJOR_CURRENCIES:
-            continue
-
-        event_name = event_elem.text.strip() if event_elem else ""
-        event_time = time_elem.text.strip() if time_elem else "All Day"
-
-        if date_elem and date_elem.select_one(".calendar__date"):
-            date_text = date_elem.select_one(".calendar__date").text.strip()
-            try:
-                event_date = datetime.strptime(date_text, "%a %b %d").replace(year=TODAY.year).date()
-            except:
-                event_date = TODAY
-        else:
-            event_date = TODAY
-
-        if event_date in [TODAY, TOMORROW]:
-            events.append({
-                "date": event_date.strftime("%a %b %d"),
-                "time": event_time + " UTC",
-                "currency": currency,
-                "event": event_name
-            })
-    except Exception:
+for event in calendar.events:
+    event_start = event.begin.datetime.date()
+    if event_start not in [TODAY, TOMORROW]:
         continue
 
+    # Extract summary and description
+    summary = event.name or ""
+    description = event.description or ""
+
+    # Must be high impact
+    if "High" not in description:
+        continue
+
+    # Extract currency from summary
+    currency = next((c for c in MAJOR_CURRENCIES if c in summary), None)
+    if not currency:
+        continue
+
+    events.append({
+        "date": event_start.strftime("%a %b %d"),
+        "time": event.begin.format("HH:mm") + " UTC",
+        "currency": currency,
+        "event": summary.strip()
+    })
+
+# --- GENERATE HTML ---
 with open("index.html", "w", encoding="utf-8") as f:
-    f.write("""
-<!DOCTYPE html>
+    f.write("""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -73,9 +61,10 @@ with open("index.html", "w", encoding="utf-8") as f:
   <h3>High-Impact Economic Events</h3>
 """)
     if not events:
-        f.write("<p>No high-impact events for today or tomorrow.</p>\n")
-    for e in events:
-        f.write(f"""
+        f.write("<p>No high-impact events for today or tomorrow.</p>")
+    else:
+        for e in events:
+            f.write(f"""
   <div class="event">
     <div class="time">{html.escape(e['date'])} — {html.escape(e['time'])}</div>
     <div class="title">{html.escape(e['currency'])}: {html.escape(e['event'])}</div>
