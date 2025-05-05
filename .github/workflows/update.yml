@@ -1,0 +1,34 @@
+# .github/workflows/update.yml
+name: Update Economic Calendar
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Runs at 03:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install requirements
+        run: pip install requests
+
+      - name: Run update script
+        run: python generate_calendar.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add index.html
+          git commit -m "Auto-update calendar"
+          git push
